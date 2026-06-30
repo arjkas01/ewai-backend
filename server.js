@@ -16,6 +16,7 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // Define the exact JSON schema we want Gemini to return to ensure the frontend doesn't break
+// A cleaner structured schema format for the modern @google/genai SDK
 const diagnosticSchema = {
     type: Type.OBJECT,
     properties: {
@@ -29,10 +30,27 @@ const diagnosticSchema = {
                     name: { type: Type.STRING },
                     healthPercent: { type: Type.INTEGER },
                     context: { type: Type.STRING }
-                },
-                required: ["name", "healthPercent", "context"]
+                }
             }
         },
+        materials: {
+            type: Type.OBJECT,
+            properties: {
+                recyclableScrap: { type: Type.ARRAY, items: { type: Type.STRING } },
+                reusableModules: { type: Type.ARRAY, items: { type: Type.STRING } }
+            }
+        },
+        estimatedMarketValue: {
+            type: Type.OBJECT,
+            properties: {
+                currency: { type: Type.STRING },
+                lowPrice: { type: Type.NUMBER },
+                highPrice: { type: Type.NUMBER },
+                justification: { type: Type.STRING }
+            }
+        }
+    }
+};
         materials: {
             type: Type.OBJECT,
             properties: {
