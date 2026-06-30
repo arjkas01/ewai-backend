@@ -7,7 +7,10 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+
+// 👉 FIX: Increase JSON payload boundaries to accept vision data strings without throwing 413 errors
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Initialize the Google Gen AI SDK
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -55,7 +58,7 @@ const diagnosticSchema = {
 // POST Endpoint to handle diagnostics mapping
 app.post('/api/diagnose', async (req, res) => {
     try {
-        const { company, appliance, model, year, currentUsage, history } = req.body;
+        const { company, appliance, model, year, currentUsage, history, hardwareImage } = req.body;
 
         // Validation safety guard
         if (!company || !appliance || !year || !currentUsage) {
@@ -75,10 +78,24 @@ app.post('/api/diagnose', async (req, res) => {
             Note: The current year is 2026. Calculate total fatigue hours using (2026 - Year Bought) * 365 * Daily Usage as a baseline, but adapt health percentages dynamically based on the damage descriptions provided in the history.
         `;
 
+        const contents = [userPrompt];
+
+        if (hardwareImage && typeof hardwareImage === 'string' && hardwareImage.includes('base64,')) {
+            const base64Data = hardwareImage.split('base64,')[1];
+            const mimeType = hardwareImage.split(';')[0].split(':')[1] || 'image/jpeg';
+
+            contents.push({
+                inlineData: {
+                    data: base64Data,
+                    mimeType: mimeType
+                }
+            });
+        }
+
         // Request the structured response from gemini-2.5-flash
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: userPrompt,
+            contents,
             config: {
                 systemInstruction: "You are an expert Smart E-Waste Management analyzer. Calculate internal component wear, map valuable reusable components vs pure raw scrap materials, and generate realistic third-party marketplace valuation ranges based on condition metrics.",
                 responseMimeType: "application/json",
@@ -94,6 +111,46 @@ app.post('/api/diagnose', async (req, res) => {
     } catch (error) {
         console.error("Gemini Backend Processing Error:", error);
         res.status(500).json({ error: "Internal AI processing failed." });
+    }
+});
+
+app.post('/api/chat', async (req, res) => {
+    try {
+        const { message, hardwareImage } = req.body;
+        const parts = [];
+
+        // 1. Check if an image attachment payload was transmitted
+        if (hardwareImage && typeof hardwareImage === 'string' && hardwareImage.includes('base64,')) {
+            const base64Data = hardwareImage.split('base64,')[1];
+            const mimeType = hardwareImage.split(';')[0].split(':')[1] || 'image/jpeg';
+
+            parts.push({
+                inlineData: {
+                    data: base64Data,
+                    mimeType: mimeType
+                }
+            });
+        }
+
+        // 2. Fallback text context prompt if the user just uploaded an image with no message
+        const finalPrompt = (typeof message === 'string' && message.trim()) || "Please inspect this attached electronic appliance component snapshot, help clarify what device features it contains, and suggest options for recycling or secondary market trade.";
+        parts.push({ text: finalPrompt });
+
+        // Request a conversational stream response from gemini-2.5-flash
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [{ role: 'user', parts }],
+            config: {
+                systemInstruction: "You are an intelligent Smart E-Waste Recycling system expert assistant with computer vision capabilities. Deeply analyze visual structures if an image is provided. If an image is present, identify visible hardware damages, model types, or degradation signs. Otherwise, act as a query answering assistant. Keep answers helpful, analytical, and clear.",
+                temperature: 0.4
+            }
+        });
+
+        res.json({ reply: response.text });
+
+    } catch (error) {
+        console.error("Chat backend failure route:", error);
+        res.status(500).json({ error: "The chat service dropped your computational prompt processing." });
     }
 });
 
