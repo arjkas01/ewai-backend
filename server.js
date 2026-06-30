@@ -8,15 +8,14 @@ dotenv.config();
 const app = express();
 app.use(cors());
 
-// 👉 Increased allocation boundaries to safely accept processed vision strings
+// Increased allocation boundaries to safely accept processed vision strings
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Initialize the Google Gen AI SDK
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Define the exact JSON schema we want Gemini to return to ensure the frontend doesn't break
-// A cleaner structured schema format for the modern @google/genai SDK
+// Define the structured JSON schema for Gemini response parsing
 const diagnosticSchema = {
     type: Type.OBJECT,
     properties: {
@@ -51,30 +50,7 @@ const diagnosticSchema = {
         }
     }
 };
-        materials: {
-            type: Type.OBJECT,
-            properties: {
-                recyclableScrap: { type: Type.ARRAY, items: { type: Type.STRING } },
-                reusableModules: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            required: ["recyclableScrap", "reusableModules"]
-        },
-        estimatedMarketValue: {
-            type: Type.OBJECT,
-            properties: {
-                currency: { type: Type.STRING },
-                lowPrice: { type: Type.NUMBER },
-                highPrice: { type: Type.NUMBER },
-                justification: { type: Type.STRING }
-            },
-            required: ["currency", "lowPrice", "highPrice", "justification"]
-        }
-    },
-    required: ["totalFatigueHours", "historyInterpretation", "components", "materials", "estimatedMarketValue"]
-};
 
-// POST Endpoint to handle diagnostics mapping
-// POST Endpoint to handle diagnostics mapping
 // POST Endpoint to handle diagnostics mapping
 app.post('/api/diagnose', async (req, res) => {
     try {
@@ -99,7 +75,7 @@ app.post('/api/diagnose', async (req, res) => {
 
         const contents = [];
 
-        // 👉 CHECK/FIX: Ensure we extract base64 components cleanly from the exact hardwareImage parameter
+        // Format image attachment objects correctly using official SDK properties
         if (hardwareImage && typeof hardwareImage === 'string' && hardwareImage.includes('base64,')) {
             const base64Data = hardwareImage.split('base64,')[1];
             const mimeType = hardwareImage.split(';')[0].split(':')[1] || 'image/jpeg';
@@ -112,35 +88,13 @@ app.post('/api/diagnose', async (req, res) => {
             });
         }
 
-        contents.push(userPrompt);
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: contents,
-            config: {
-                systemInstruction: "You are an expert Smart E-Waste Management analyzer. Calculate internal component wear, map valuable reusable components vs pure raw scrap materials, and generate realistic third-party marketplace valuation ranges based on condition metrics.",
-                responseMimeType: "application/json",
-                responseSchema: diagnosticSchema,
-                temperature: 0.2 
-            }
-        });
-
-        const resultJson = JSON.parse(response.text);
-        res.json(resultJson);
-
-    } catch (error) {
-        console.error("Gemini Backend Processing Error:", error);
-        res.status(500).json({ error: "Internal AI processing failed." });
-    }
-});
-
         // Push the text prompt into the contents array
         contents.push(userPrompt);
 
         // Request the structured response from gemini-2.5-flash
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: contents, // 👉 Pass the clean, unnested array directly
+            contents: contents,
             config: {
                 systemInstruction: "You are an expert Smart E-Waste Management analyzer. Calculate internal component wear, map valuable reusable components vs pure raw scrap materials, and generate realistic third-party marketplace valuation ranges based on condition metrics.",
                 responseMimeType: "application/json",
@@ -159,31 +113,10 @@ app.post('/api/diagnose', async (req, res) => {
     }
 });
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents,
-            config: {
-                systemInstruction: "You are an expert Smart E-Waste Management analyzer. Calculate internal component wear, map valuable reusable components vs pure raw scrap materials, and generate realistic third-party marketplace valuation ranges based on condition metrics.",
-                responseMimeType: "application/json",
-                responseSchema: diagnosticSchema,
-                temperature: 0.2
-            }
-        });
-
-        const resultJson = JSON.parse(response.text);
-        res.json(resultJson);
-
-    } catch (error) {
-        console.error("Gemini Backend Processing Error:", error);
-        res.status(500).json({ error: "Internal AI processing failed." });
-    }
-});
-
+// POST Endpoint for the Conversational AI Assistant Chat
 app.post('/api/chat', async (req, res) => {
     try {
         const { message, hardwareImage } = req.body;
-        
-        // 👉 FIX: For the chat route, use the standard flat format expected by contents
         const contents = [];
 
         if (hardwareImage && typeof hardwareImage === 'string' && hardwareImage.includes('base64,')) {
@@ -204,7 +137,7 @@ app.post('/api/chat', async (req, res) => {
         // Request conversational stream response from gemini-2.5-flash
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: contents, // Passed cleanly here
+            contents: contents,
             config: {
                 systemInstruction: "You are an intelligent Smart E-Waste Recycling system expert assistant with computer vision capabilities. Deeply analyze visual structures if an image is provided. If an image is present, identify visible hardware damages, model types, or degradation signs. Otherwise, act as a query answering assistant. Keep answers helpful, analytical, and clear.",
                 temperature: 0.4
