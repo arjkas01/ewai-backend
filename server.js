@@ -56,10 +56,12 @@ const diagnosticSchema = {
 };
 
 // POST Endpoint to handle diagnostics mapping
+// POST Endpoint to handle diagnostics mapping
 app.post('/api/diagnose', async (req, res) => {
     try {
         const { company, appliance, model, year, currentUsage, history, hardwareImage } = req.body;
 
+        // Validation safety guard
         if (!company || !appliance || !year || !currentUsage) {
             return res.status(400).json({ error: "Missing required diagnostic metrics." });
         }
@@ -76,9 +78,9 @@ app.post('/api/diagnose', async (req, res) => {
             Note: The current year is 2026. Calculate total fatigue hours using (2026 - Year Bought) * 365 * Daily Usage as a baseline, but adapt health percentages dynamically based on the damage descriptions provided in the history.
         `;
 
-        const contents = [userPrompt];
+        // 👉 FIX: The @google/genai SDK expects parts or prompts flat in contents when mixing types
+        const contents = [];
 
-        // 👉 FIX: Format image attachment objects correctly using official SDK properties
         if (hardwareImage && typeof hardwareImage === 'string' && hardwareImage.includes('base64,')) {
             const base64Data = hardwareImage.split('base64,')[1];
             const mimeType = hardwareImage.split(';')[0].split(':')[1] || 'image/jpeg';
@@ -90,6 +92,31 @@ app.post('/api/diagnose', async (req, res) => {
                 }
             });
         }
+
+        // Push the text prompt into the contents array
+        contents.push(userPrompt);
+
+        // Request the structured response from gemini-2.5-flash
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: contents, // 👉 Pass the clean, unnested array directly
+            config: {
+                systemInstruction: "You are an expert Smart E-Waste Management analyzer. Calculate internal component wear, map valuable reusable components vs pure raw scrap materials, and generate realistic third-party marketplace valuation ranges based on condition metrics.",
+                responseMimeType: "application/json",
+                responseSchema: diagnosticSchema,
+                temperature: 0.2 
+            }
+        });
+
+        // Parse and send the clean JSON payload back to the client
+        const resultJson = JSON.parse(response.text);
+        res.json(resultJson);
+
+    } catch (error) {
+        console.error("Gemini Backend Processing Error:", error);
+        res.status(500).json({ error: "Internal AI processing failed." });
+    }
+});
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
