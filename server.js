@@ -8,7 +8,7 @@ dotenv.config();
 const app = express();
 app.use(cors());
 
-// 👉 FIX: Increase JSON payload boundaries to accept vision data strings without throwing 413 errors
+// 👉 Increased allocation boundaries to safely accept processed vision strings
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
@@ -60,12 +60,10 @@ app.post('/api/diagnose', async (req, res) => {
     try {
         const { company, appliance, model, year, currentUsage, history, hardwareImage } = req.body;
 
-        // Validation safety guard
         if (!company || !appliance || !year || !currentUsage) {
             return res.status(400).json({ error: "Missing required diagnostic metrics." });
         }
 
-        // Construct the prompt with the payload submitted by home.html
         const userPrompt = `
             Analyze this appliance for e-waste evaluation, structural material breakdown, and second-hand market pricing:
             - Manufacturer/Company: ${company}
@@ -80,6 +78,7 @@ app.post('/api/diagnose', async (req, res) => {
 
         const contents = [userPrompt];
 
+        // 👉 FIX: Format image attachment objects correctly using official SDK properties
         if (hardwareImage && typeof hardwareImage === 'string' && hardwareImage.includes('base64,')) {
             const base64Data = hardwareImage.split('base64,')[1];
             const mimeType = hardwareImage.split(';')[0].split(':')[1] || 'image/jpeg';
@@ -92,7 +91,6 @@ app.post('/api/diagnose', async (req, res) => {
             });
         }
 
-        // Request the structured response from gemini-2.5-flash
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents,
@@ -100,11 +98,10 @@ app.post('/api/diagnose', async (req, res) => {
                 systemInstruction: "You are an expert Smart E-Waste Management analyzer. Calculate internal component wear, map valuable reusable components vs pure raw scrap materials, and generate realistic third-party marketplace valuation ranges based on condition metrics.",
                 responseMimeType: "application/json",
                 responseSchema: diagnosticSchema,
-                temperature: 0.2 // Lower temperature keeps math evaluations and pricing reliable
+                temperature: 0.2
             }
         });
 
-        // Parse and send the clean JSON payload back to the client
         const resultJson = JSON.parse(response.text);
         res.json(resultJson);
 
@@ -117,14 +114,15 @@ app.post('/api/diagnose', async (req, res) => {
 app.post('/api/chat', async (req, res) => {
     try {
         const { message, hardwareImage } = req.body;
-        const parts = [];
+        
+        // 👉 FIX: For the chat route, use the standard flat format expected by contents
+        const contents = [];
 
-        // 1. Check if an image attachment payload was transmitted
         if (hardwareImage && typeof hardwareImage === 'string' && hardwareImage.includes('base64,')) {
             const base64Data = hardwareImage.split('base64,')[1];
             const mimeType = hardwareImage.split(';')[0].split(':')[1] || 'image/jpeg';
 
-            parts.push({
+            contents.push({
                 inlineData: {
                     data: base64Data,
                     mimeType: mimeType
@@ -132,14 +130,13 @@ app.post('/api/chat', async (req, res) => {
             });
         }
 
-        // 2. Fallback text context prompt if the user just uploaded an image with no message
         const finalPrompt = (typeof message === 'string' && message.trim()) || "Please inspect this attached electronic appliance component snapshot, help clarify what device features it contains, and suggest options for recycling or secondary market trade.";
-        parts.push({ text: finalPrompt });
+        contents.push(finalPrompt);
 
-        // Request a conversational stream response from gemini-2.5-flash
+        // Request conversational stream response from gemini-2.5-flash
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: [{ role: 'user', parts }],
+            contents: contents, // Passed cleanly here
             config: {
                 systemInstruction: "You are an intelligent Smart E-Waste Recycling system expert assistant with computer vision capabilities. Deeply analyze visual structures if an image is provided. If an image is present, identify visible hardware damages, model types, or degradation signs. Otherwise, act as a query answering assistant. Keep answers helpful, analytical, and clear.",
                 temperature: 0.4
