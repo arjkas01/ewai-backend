@@ -12,6 +12,12 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+// Check for API key
+if (!process.env.GEMINI_API_KEY) {
+    console.error('❌ GEMINI_API_KEY is not set in environment variables.');
+    process.exit(1);
+}
+
 // Initialize the Google Gen AI SDK
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -91,9 +97,9 @@ app.post('/api/diagnose', async (req, res) => {
         // Push the text prompt into the contents array
         contents.push(userPrompt);
 
-        // Request the structured response from gemini-2.5-flash
+        // Request the structured response from gemini-2.0-flash
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.0-flash',   // ✅ Fixed model name
             contents: contents,
             config: {
                 systemInstruction: "You are an expert Smart E-Waste Management analyzer. Calculate internal component wear, map valuable reusable components vs pure raw scrap materials, and generate realistic third-party marketplace valuation ranges based on condition metrics.",
@@ -134,9 +140,9 @@ app.post('/api/chat', async (req, res) => {
         const finalPrompt = (typeof message === 'string' && message.trim()) || "Please inspect this attached electronic appliance component snapshot, help clarify what device features it contains, and suggest options for recycling or secondary market trade.";
         contents.push(finalPrompt);
 
-        // Request conversational stream response from gemini-2.5-flash
+        // Request conversational stream response from gemini-2.0-flash
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.0-flash',   // ✅ Fixed model name
             contents: contents,
             config: {
                 systemInstruction: "You are an intelligent Smart E-Waste Recycling system expert assistant with computer vision capabilities. Deeply analyze visual structures if an image is provided. If an image is present, identify visible hardware damages, model types, or degradation signs. Otherwise, act as a query answering assistant. Keep answers helpful, analytical, and clear.",
