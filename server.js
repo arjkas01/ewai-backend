@@ -99,7 +99,7 @@ app.post('/api/diagnose', async (req, res) => {
 
         // Request the structured response from gemini-2.0-flash
         const response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash',   // ✅ Fixed model name
+            model: 'gemini-2.0-flash-lite',   // ✅ Fixed model name
             contents: contents,
             config: {
                 systemInstruction: "You are an expert Smart E-Waste Management analyzer. Calculate internal component wear, map valuable reusable components vs pure raw scrap materials, and generate realistic third-party marketplace valuation ranges based on condition metrics.",
